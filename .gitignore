@@ -1,0 +1,7 @@
+.Rproj.user/
+*.Rproj
+
+# data
+*.nex
+*.tre
+primates/
