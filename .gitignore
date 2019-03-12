@@ -1,7 +1,9 @@
 .Rproj.user/
 *.Rproj
+.Rhistory
 
 # data
 *.nex
 *.tre
 primates/
+.Rproj.user
