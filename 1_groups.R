@@ -127,8 +127,9 @@ matched_nms <- nm_match(algnmnt_nms = algnmnt_nms, tree_nms = tree_nms,
                         algnmnt_pttrns = algnmnt_pttrns,
                         tree_pttrns = tree_pttrns, max_dist = .15)
 groups <- groups_get(matched_nms = matched_nms, tree = tree,
-                     max_size = 30, min_size = min_size)
+                     max_size = 60, min_size = min_size)
 groups
-groups$n353
+
+
 
 
