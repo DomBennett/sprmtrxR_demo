@@ -25,17 +25,24 @@ print.alignment <- function(x) {
   cat('Alignment (', outsider:::stat(x$ntips), ') tips.\n', sep = '')
 }
 
-nm_match <- function(algnmnt_nms, tree_nms, max_dist = .1) {
+nm_match <- function(algnmnt_nms, tree_nms, algnmnt_pttrns = algnmnt_nms,
+                     tree_pttrns = tree_nms, max_dist = .1) {
+  # Checks
   if (any(duplicated(algnmnt_nms)) | any(duplicated(tree_nms))) {
     stop('Duplicated names.')
   }
-  calc <- function(algnmnt_nm) {
+  if (length(algnmnt_nms) != length(algnmnt_pttrns) |
+      length(tree_nms) != length(tree_pttrns)) {
+    stop('`*_nms` and `*_pttrns` must be same lengths.')
+  }
+  calc <- function(i) {
     # Calc prop. Levenshtein distance, select tree name with lowest distance
-    dists <- adist(x = algnmnt_nm, y = tree_nms, partial = TRUE)[1, ]
-    pdists <- dists/nchar(algnmnt_nm)
+    algnmnt_pttrn <- algnmnt_pttrns[[i]]
+    dists <- adist(x = algnmnt_pttrn, y = tree_pttrns, partial = TRUE)[1, ]
+    pdists <- dists/nchar(algnmnt_pttrn)
     pssbls <- which(pdists < max_dist)
     npssbls <- length(pssbls)
-    if (npssbls > 2) {
+    if (npssbls > 1) {
       res <- tree_nms[pssbls[which.min(pdists[pssbls])]]
     } else if (npssbls == 1) {
       res <- tree_nms[pssbls]
@@ -44,18 +51,13 @@ nm_match <- function(algnmnt_nms, tree_nms, max_dist = .1) {
     }
     res
   }
-  res <- vapply(X = algnmnt_nms, FUN = calc, FUN.VALUE = character(1))
-  nms <- res[res != '']
-  matched <- names(nms)
-  matched <- unname(matched)
-  unmatched <- names(res[res == ''])
-  algnmnts_nms_wdups <- matched[duplicated(nms)]
-  if (length(algnmnts_nms_wdups) > 0) {
-    msg <- paste0('Alignment names are matching to the same tree name(s):\n',
-                  paste0(algnmnts_nms_wdups, collapse = ', '))
-    warning(msg)
-  }
-  res <- list('alignment' = matched, 'tree' = nms, 'unmatched' = unmatched)
+  matched_treenms <- vapply(X = seq_along(algnmnt_nms), FUN = calc,
+                            FUN.VALUE = character(1))
+  unmatched <- algnmnt_nms[matched_treenms == '']
+  matched <- algnmnt_nms[matched_treenms != '']
+  matched_treenms <- matched_treenms[matched_treenms != '']
+  res <- list('alignment' = matched, 'tree' = matched_treenms,
+              'unmatched' = unmatched)
   class(res) <- 'matched_names'
   res
 }
@@ -118,15 +120,15 @@ alfls <- file.path(input_dir, list.files(path = input_dir, pattern = '.fasta'))
 # Data ----
 tree <- treeman::readTree(file = file.path('0_data', 'primate.tre'))
 tree_nms <- tree@tips
+tree_pttrns <- sub(pattern = '_.*$', replacement = '', x = tree_nms)
 algnmnt_nms <- nms_from_alignments(flpths = alfls)
-# TODO add patterns
+algnmnt_pttrns <- sub(pattern = '\\s.*$', replacement = '', x = algnmnt_nms)
 matched_nms <- nm_match(algnmnt_nms = algnmnt_nms, tree_nms = tree_nms,
-                        max_dist = .15)
+                        algnmnt_pttrns = algnmnt_pttrns,
+                        tree_pttrns = tree_pttrns, max_dist = .15)
 groups <- groups_get(matched_nms = matched_nms, tree = tree,
-                     max_size = max_size, min_size = min_size)
+                     max_size = 30, min_size = min_size)
 groups
-
-
-
+groups$n353
 
 
