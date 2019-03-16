@@ -15,24 +15,35 @@ alignments <- list()
 for (alfl in alfls) {
   alignments[[alfl]] <- seqs_read(fl = alfl)
 }
+names(alignments) <- gsub(pattern = '[^0-9]', replacement = '',
+                          x = names(alignments))
 
 smatrices_get <- function(groups, alignments, column_cutoff = .75,
                           tip_cutoff = column_cutoff, min_ntips = 5,
-                          min_ngenes = 5) {
-  nbps <- vapply(X = alignments, FUN = function(x) length(x[[1]]),
-                 FUN.VALUE = integer(1))
-  smatrices <- vector(mode = 'list', length = length(groups))
-  names(smatrices) <- names(groups)
+                          min_ngenes = 5, min_nbps = 200) {
+  res <- list()
+  all_tips <- character(0)
   for (grp_id in names(groups)) {
     nms <- groups[[grp_id]]
-    smatrix <- smatrix_get(nms = nms, alignments = alignments, nbps = nbps)
-    smatrix <- drop_columns(smatrix = smatrix, cutoff = column_cutoff)
+    # select sequences from alignments
+    seqs_list <- seqs_select(nms = nms, seqs_list = alignments)
+    # filter selected sequences
+    seqs_list <- seqs_filter(seqs_list = seqs_list, cutoff = column_cutoff,
+                             min_nbps = min_nbps)
+    # merge into supermatrix
+    smatrix <- smatrix_get(seqs_list = seqs_list)
+    # drop tips
     smatrix <- drop_tips(smatrix = smatrix, cutoff = tip_cutoff)
-    if (smatrix) {
-      smatrices[[grp_id]] <- smatrix
+    if (length(smatrix) >= min_ntips &
+        length(attr(smatrix, 'genes')) >= min_ngenes) {
+      res[[grp_id]] <- smatrix
+      # record tips
+      all_tips <- c(all_tips, names(smatrix))
     }
   }
-  res <- list('smatrices' = smatrices, 'groups' = names(groups))
-  class(res) <- 'smatrices'
+  attr(res, 'tips') <- all_tips
+  class(res) <- 'res'
   res
 }
+
+res

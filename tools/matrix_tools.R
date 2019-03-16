@@ -1,53 +1,3 @@
-overhangs_drop <- function(als, cutoff = .75) {
-  for (i in seq_along(als)) {
-    gps_mtrx <- matrix(FALSE, ncol = nchar(als[[i]][[1]]),
-                       nrow = length(als[[i]]))
-    for(j in seq_along(als[[i]])) {
-      pull <- gregexpr('-', als[[i]][[j]])[[1]]
-      if(pull[1] == -1) {
-        next
-      }
-      gps_mtrx[j, pull] <- TRUE
-    }
-    prp_mssng <- 1 - (colSums(gps_mtrx)/nrow(gps_mtrx))
-    ovrlppng <- which(prp_mssng > cutoff)
-    strt <- ovrlppng[1]
-    end <- ovrlppng[length(ovrlppng)]
-    for(j in seq_along(als[[i]])) {
-      als[[i]][[j]] <- substr(als[[i]][[j]], start = strt, stop = end)
-    }
-  }
-  als
-}
-
-split_up <- function(al, cutoff = .75, min_length = 500) {
-  gps_mtrx <- matrix(FALSE, ncol = nchar(al[[1]]), nrow = length(al))
-  for(i in seq_along(al)) {
-    pull <- gregexpr('-', al[[i]])[[1]]
-    gps_mtrx[i, pull] <- TRUE
-  }
-  prp_mssng <- 1 - (colSums(gps_mtrx)/nrow(gps_mtrx))
-  strts <- which((prp_mssng[-1] > cutoff) &
-                   (prp_mssng[-1*length(prp_mssng)] < cutoff)) + 1
-  ends <- which((prp_mssng[-1] < cutoff) &
-                  (prp_mssng[-1*length(prp_mssng)] > cutoff))
-  lngths <- ends - strts
-  pull <- lngths > min_length
-  strts <- strts[pull]
-  ends <- ends[pull]
-  new_als <- vector('list', length = length(strts))
-  for(i in seq_along(strts)) {
-    strt <- strts[i]
-    end <- ends[i]
-    new_al <- vector('list', length = length(al))
-    for(j in seq_along(al)) {
-      new_al[[j]] <- substr(al[[j]], start = strt, stop = end)
-    }
-    names(new_al) <- names(al)
-    new_als[[i]] <- new_al
-  }
-  new_als
-}
 
 seqs_read <- function(fl) {
   all_data <- readLines(fl)
@@ -82,90 +32,90 @@ print.sequences <- function(x) {
   cat('.... ....\n')
 }
 
-seqs_write <- function(sqs, fl) {
-  fasta <- ''
-  for(i in seq_along(sqs)) {
-    sq <- sqs[[i]]
-    dfln <- names(sqs)[[i]]
-    fasta <- paste0(fasta, '>', dfln, '\n', sq, '\n\n')
+gapmatrix_get <- function(seqs) {
+  calc <- function(seq) {
+    seq == '-'
   }
-  cat(fasta, file = fl)
+  nbps <- length(seqs[[1]])
+  res <- t(vapply(X = seqs, FUN = calc, FUN.VALUE = logical(nbps)))
+  class(res) <- 'gapmatrix'
+  res
 }
 
-partition <- function(lngths, fl) {
-  gene <- strt <- 1
-  prttn_txt <- ''
-  for(lngth in lngths) {
-    end <- lngth + strt - 1
-    prttn_txt <- paste0(prttn_txt, 'DNA, gene', gene, ' = ', strt, '-', end,
-                        '\n')
-    strt <- end + 1
-    gene <- gene + 1
-  }
-  cat(prttn_txt, file = fl)
-}
-
-smatrix_get <- function(nms, alignments, nbps) {
+seqs_select <- function(seqs_list, nms) {
   seqs_get <- function(i) {
-    nbp <- nbps[[i]]
-    algnmnt <- alignments[[i]]
+    seqs <- seqs_list[[i]]
+    nbp <- length(seqs[[1]])
     filler <- rep('-', nbp)
     res <- vector(mode = 'list', length = length(nms))
     names(res) <- nms
-    present <- names(algnmnt)[names(algnmnt) %in% nms]
-    res[present] <- algnmnt[present]
-    absents <- nms[!nms %in% names(algnmnt)]
+    present <- names(seqs)[names(seqs) %in% nms]
+    res[present] <- seqs[present]
+    absents <- nms[!nms %in% names(seqs)]
     for (absent in absents) {
       res[[absent]] <- filler
     }
     class(res) <- 'sequences'
     res
   }
-  seqs <- lapply(seq_along(alignments), seqs_get)
-  seqs <- lapply(seqs, paste0, collapse = '')
-  res <- list('seqs' = seqs, 'genes' = names(alignments), 'nbases' = nbases,
-              tips = nms)
+  res <- lapply(seq_along(seqs_list), seqs_get)
+  names(res) <- names(seqs_list)
+  res
+}
+
+seqs_filter <- function(seqs_list, cutoff = 0.9, min_nbps = 200) {
+  calc <- function(seqs) {
+    gapmatrix <- gapmatrix_get(seqs = seqs)
+    pclmn <- 1 - (colSums(gapmatrix)/nrow(gapmatrix))
+    keep_clmns <- pclmn >= cutoff
+    seqs <- lapply(X = seqs, FUN = function(x) x[keep_clmns])
+    class(seqs) <- 'sequences'
+    seqs
+  }
+  seqs_list <- lapply(X = seqs_list, FUN = calc)
+  nbps <- vapply(X = seqs_list, FUN = function(x) length(x[[1]]),
+                 FUN.VALUE = integer(1))
+  seqs_list[nbps >= min_nbps]
+}
+
+smatrix_get <- function(seqs_list) {
+  stick_together <- function(i) {
+    seqs <- lapply(X = seqs_list, FUN = '[[', i)
+    seqs <- lapply(X = seqs, FUN = paste0, collapse = '')
+    seq <- paste0(seqs, collapse = '')
+  }
+  nbps <- vapply(X = seqs_list, FUN = function(x) length(x[[1]]),
+                 FUN.VALUE = integer(1))
+  res <- lapply(seq_along(seqs_list[[1]]), stick_together)
+  names(res) <- names(seqs_list[[1]])
+  attr(res, 'genes') <- names(seqs_list)
+  attr(res, 'nbps') <- nbps
   class(res) <- 'smatrix'
   res
 }
 
 print.smatrix <- function(x) {
-  nmssng <- sum(vapply(X = gregexpr(pattern = '-', text = x$seqs), FUN = length,
+  nmssng <- sum(vapply(X = gregexpr(pattern = '-', text = x), FUN = length,
                        FUN.VALUE = integer(1)))
-  '-' == x$seqs[[1]]
-  
-  pmssng <- signif(x = nmssng * 100/(sum(x$nbases) * length(x$seqs)),
-                   digits = 2)
-  cat('Smatrix:\n', '.... [', length(x$genes), '] genes\n',
-      '.... [', length(x$tips), '] tips\n',
-      '.... [', sum(x$nbases), '] bps long\n',
+  total_nbps <- sum(attr(x, 'nbps')) * length(x)
+  pmssng <- signif(x = nmssng * 100/total_nbps, digits = 2)
+  cat('Smatrix:\n', '.... [', length(attr(x, 'genes')), '] genes\n',
+      '.... [', length(x), '] tips\n',
+      '.... [', sum(attr(x, 'nbps')), '] bps long\n',
       '.... [', pmssng, '%] gaps\n', sep = '')
 }
 
-gapmatrix_get <- function(smatrix) {
-  calc <- function(seq) {
-    seq == '-'
-  }
-  nbps <- length(smatrix[[1]])
-  res <- t(vapply(X = smatrix, FUN = calc, FUN.VALUE = logical(nbps)))
-  class(res) <- 'gapmatrix'
+drop_tips <- function(smatrix, cutoff = 0.5) {
+  nmissing <- vapply(X = gregexpr(pattern = '-', text = smatrix),
+                     FUN = length, FUN.VALUE = integer(1))
+  nbps <- sum(attr(smatrix, 'nbps'))
+  pmissing <- 1 - (nmissing/nbps)
+  keep_tips <- pmissing >= cutoff
+  res <- smatrix[keep_tips]
+  attr(res, 'genes') <- attr(smatrix, 'genes')
+  attr(res, 'nbps') <- attr(smatrix, 'nbps')
+  class(res) <- 'smatrix'
   res
 }
 
-drop_columns <- function(smatrix, cutoff = 0.9) {
-  calc <- function(seq) {
-    seq[keep_clmns]
-  }
-  gapmatrix <- gapmatrix_get(smatrix = smatrix)
-  pclmn <- 1 - (colSums(gapmatrix)/ncol(gapmatrix))
-  keep_clmns <- pclmn >= cutoff
-  smatrix <- lapply(X = smatrix, FUN = calc)
-  smatrix
-}
 
-drop_tips <- function(smatrix, cutoff = 0.5) {
-  gapmatrix <- gapmatrix_get(smatrix = smatrix)
-  ptips <- 1 - (rowSums(gapmatrix)/ncol(gapmatrix))
-  keep_tips <- ptips >= cutoff
-  smatrix[keep_tips]
-}

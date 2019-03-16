@@ -8,7 +8,7 @@ mafft <- module_import('mafft', 'dombennett/om..mafft')
 
 # Vars ----
 wd <- 'primates'
-ncbi_dr <- '/usr/bin/'
+ncbi_dr <- '/usr/local/ncbi/blast/bin/'
 txid <- 376911  # https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9443
 
 # Run ----
