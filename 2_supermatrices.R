@@ -46,4 +46,15 @@ smatrices_get <- function(groups, alignments, column_cutoff = .75,
   res
 }
 
-res
+smatrices <- res
+i <- 1
+
+# Write out smatrices ----
+for (i in seq_along(smatrices)) {
+  smatrix <- smatrices[[i]]
+  # different lengths
+  smatrix <- smatrix[-1*c(8,9)]
+  grp_id <- names(smatrices)[[i]]
+  seqs_write(seqs = smatrix, fl = paste0(grp_id, '.fasta'))
+  partition(lngths = attr(smatrix, 'nbps'), fl = 'partition.txt')
+}
