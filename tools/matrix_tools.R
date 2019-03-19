@@ -6,38 +6,41 @@ seqs_read <- function(fl) {
     bit <- all_data[[i]]
     if (grepl(pattern = '^>', x = bit)) {
       nm <- sub(pattern = '^>', '', x = bit)
-      seqs[[nm]] <- ''
+      seqs[[nm]] <- NULL
     } else {
       bit <- strsplit(x = bit, split = '')[[1]]
       seqs[[nm]] <- c(seqs[[nm]], bit)
     }
   }
-  class(seqs) <- 'sequences'
-  seqs
+  lngths <- vapply(X = seqs, FUN = length, FUN.VALUE = integer(1))
+  if (all(lngths != lngths[[1]])) {
+    stop('Not an alignment: sequences have different lengths.')
+  }
+  res <- matrix(unlist(seqs), ncol = length(seqs[[1]]), nrow = length(seqs),
+                byrow = TRUE)
+  rownames(res) <- names(seqs)
+  class(res) <- 'sequence_alignment'
+  res
 }
 
-print.sequences <- function(x) {
+print.sequence_alignment <- function(x) {
   max_ntips <- 10
   max_nclmns <- 50
-  ntips <- ifelse(length(x) >= max_ntips, max_ntips, length(x))
-  nclmns <- ifelse(length(x[[1]]) >= max_nclmns, max_nclmns, length(x[[1]]))
-  part <- x[seq_len(ntips)]
-  part <- lapply(X = part, FUN = function(x) paste0(x[seq_len(nclmns)],
-                                                    collapse = ''))
-  cat('Sequences: [', length(x), '] tips, [', length(x[[1]]), '] bps\n',
+  ntips <- ifelse(nrow(x) >= max_ntips, max_ntips, length(x))
+  nclmns <- ifelse(ncol(x) >= max_nclmns, max_nclmns, ncol(x))
+  part <- x[seq_len(ntips), seq_len(nclmns)]
+  cat('Sequence alignment: [', nrow(x), '] tips, [', ncol(x),
+      '] bps\n',
       sep = '')
-  for (i in seq_along(part)) {
-    cat('.... $', names(part)[i], ': ', part[[i]], ' ...\n', sep = '')
+  for (i in seq_len(ntips)) {
+    cat('.... $', rownames(part)[i], ': ', part[i, ], ' ...\n', sep = '')
   }
   cat('.... ....\n')
 }
 
 gapmatrix_get <- function(seqs) {
-  calc <- function(seq) {
-    seq == '-'
-  }
-  nbps <- length(seqs[[1]])
-  res <- t(vapply(X = seqs, FUN = calc, FUN.VALUE = logical(nbps)))
+  res <- seqs == '-'
+  rownames(res) <- rownames(seqs)
   class(res) <- 'gapmatrix'
   res
 }
@@ -45,17 +48,12 @@ gapmatrix_get <- function(seqs) {
 seqs_select <- function(seqs_list, nms) {
   seqs_get <- function(i) {
     seqs <- seqs_list[[i]]
-    nbp <- length(seqs[[1]])
-    filler <- rep('-', nbp)
-    res <- vector(mode = 'list', length = length(nms))
-    names(res) <- nms
-    present <- names(seqs)[names(seqs) %in% nms]
-    res[present] <- seqs[present]
-    absents <- nms[!nms %in% names(seqs)]
-    for (absent in absents) {
-      res[[absent]] <- filler
-    }
-    class(res) <- 'sequences'
+    nbp <- ncol(seqs)
+    res <- matrix(data = '-', nrow = length(nms), ncol = nbp)
+    rownames(res) <- nms
+    present <- rownames(seqs)[rownames(seqs) %in% nms]
+    res[present, ] <- seqs[present, ]
+    class(res) <- 'sequence_alignment'
     res
   }
   res <- lapply(seq_along(seqs_list), seqs_get)
@@ -68,26 +66,24 @@ seqs_filter <- function(seqs_list, cutoff = 0.9, min_nbps = 200) {
     gapmatrix <- gapmatrix_get(seqs = seqs)
     pclmn <- 1 - (colSums(gapmatrix)/nrow(gapmatrix))
     keep_clmns <- pclmn >= cutoff
-    seqs <- lapply(X = seqs, FUN = function(x) x[keep_clmns])
-    class(seqs) <- 'sequences'
+    seqs <- seqs[ ,keep_clmns]
+    class(seqs) <- 'sequence_alignment'
     seqs
   }
   seqs_list <- lapply(X = seqs_list, FUN = calc)
-  nbps <- vapply(X = seqs_list, FUN = function(x) length(x[[1]]),
-                 FUN.VALUE = integer(1))
+  nbps <- vapply(X = seqs_list, FUN = ncol, FUN.VALUE = integer(1))
   seqs_list[nbps >= min_nbps]
 }
 
 smatrix_get <- function(seqs_list) {
   stick_together <- function(i) {
-    seqs <- lapply(X = seqs_list, FUN = '[[', i)
-    seqs <- lapply(X = seqs, FUN = paste0, collapse = '')
-    seq <- paste0(seqs, collapse = '')
+    res <- unlist(lapply(X = seqs_list, FUN = function(x) x[i, ]))
+    paste0(res, collapse = '')
   }
-  nbps <- vapply(X = seqs_list, FUN = function(x) length(x[[1]]),
-                 FUN.VALUE = integer(1))
-  res <- lapply(seq_along(seqs_list[[1]]), stick_together)
-  names(res) <- names(seqs_list[[1]])
+  nbps <- vapply(X = seqs_list, FUN = ncol, FUN.VALUE = integer(1))
+  ntips <- nrow(seqs_list[[1]])
+  res <- lapply(seq_len(ntips), stick_together)
+  names(res) <- rownames(seqs_list[[1]])
   attr(res, 'genes') <- names(seqs_list)
   attr(res, 'nbps') <- nbps
   class(res) <- 'smatrix'
@@ -118,4 +114,37 @@ drop_tips <- function(smatrix, cutoff = 0.5) {
   res
 }
 
+smatrices_get <- function(groups, alignments, column_cutoff = .5,
+                          tip_cutoff = column_cutoff, min_ntips = 5,
+                          min_ngenes = 5, min_nbps = 200) {
+  res <- list()
+  all_tips <- character(0)
+  for (grp_id in names(groups)) {
+    nms <- groups[[grp_id]]
+    # select sequences from alignments
+    seqs_list <- seqs_select(nms = nms, seqs_list = alignments)
+    # filter selected sequences
+    seqs_list <- seqs_filter(seqs_list = seqs_list, cutoff = column_cutoff,
+                             min_nbps = min_nbps)
+    if (length(seqs_list) == 0) {
+      next
+    }
+    # merge into supermatrix
+    smatrix <- smatrix_get(seqs_list = seqs_list)
+    # drop tips
+    smatrix <- drop_tips(smatrix = smatrix, cutoff = tip_cutoff)
+    if (length(smatrix) >= min_ntips &
+        length(attr(smatrix, 'genes')) >= min_ngenes) {
+      res[[grp_id]] <- smatrix
+      # record tips
+      all_tips <- c(all_tips, names(smatrix))
+    }
+  }
+  attr(res, 'tips') <- all_tips
+  class(res) <- 'smatrices'
+  res
+}
 
+print.smatrices <- function(x) {
+  cat('Smatrices object of [', length(x), ']', sep = '')
+}

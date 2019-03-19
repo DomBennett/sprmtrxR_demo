@@ -3,6 +3,7 @@ seqs_write <- function(seqs, fl) {
   for (i in seq_along(seqs)) {
     sq <- seqs[[i]]
     dfln <- names(seqs)[[i]]
+    dfln <- gsub(pattern = '\\s', replacement = '_', x = dfln)
     fasta <- paste0(fasta, '>', dfln, '\n', sq, '\n\n')
   }
   cat(fasta, file = fl)
