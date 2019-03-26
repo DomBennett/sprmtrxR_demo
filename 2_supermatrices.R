@@ -6,7 +6,10 @@ source(file = file.path('tools', 'load.R'))
 
 # Vars ----
 column_cutoff <- .51
-tip_cutoff <- .75
+tip_cutoff <- .51
+min_ngenes <- 2
+min_ntips <- 5
+min_nbps <- 200
 alignment_dir <- file.path('primates', 'alignments')
 supermatrix_dir <- file.path('primates', 'supermatrix')
 if (!dir.exists(supermatrix_dir)) {
@@ -30,7 +33,8 @@ names(alignments) <- gsub(pattern = '[^0-9]', replacement = '',
 # Supermatrices ----
 smatrices <- smatrices_get(groups = groups, alignments = alignments,
                            column_cutoff = column_cutoff,
-                           tip_cutoff = tip_cutoff)
+                           tip_cutoff = tip_cutoff, min_ntips = min_ntips,
+                           min_ngenes = min_ngenes, min_nbps = min_nbps)
 
 # Write out smatrices ----
 for (i in seq_along(smatrices)) {

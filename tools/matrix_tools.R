@@ -48,11 +48,21 @@ gapmatrix_get <- function(seqs) {
 seqs_select <- function(seqs_list, nms) {
   seqs_get <- function(i) {
     seqs <- seqs_list[[i]]
+    present_get <- function(subnms) {
+      res <- ''
+      present <- rownames(seqs) %in% subnms
+      if (any(present)) {
+        j <- sample(x = which(present), size = 1)
+        res <- rownames(seqs)[[j]]
+      }
+      res
+    }
     nbp <- ncol(seqs)
     res <- matrix(data = '-', nrow = length(nms), ncol = nbp)
-    rownames(res) <- nms
-    present <- rownames(seqs)[rownames(seqs) %in% nms]
-    res[present, ] <- seqs[present, ]
+    rownames(res) <- names(nms)
+    present <- vapply(X = nms, FUN = present_get, FUN.VALUE = character(1))
+    present <- present[present != '']
+    res[names(present), ] <- seqs[present, ]
     class(res) <- 'sequence_alignment'
     res
   }
@@ -120,7 +130,16 @@ smatrices_get <- function(groups, alignments, column_cutoff = .5,
   res <- list()
   all_tips <- character(0)
   for (grp_id in names(groups)) {
-    nms <- groups[[grp_id]]
+    # create named list of names
+    nms <- as.list(groups[[grp_id]])
+    names(nms) <- groups[[grp_id]]
+    # construct super-super-matrix
+    if (grp_id == 'unmatched') {
+      sub_grp_ids <- names(groups)[names(groups) != 'unmatched']
+      for (sub_grp_id in sub_grp_ids) {
+        nms[[sub_grp_id]] <- groups[[sub_grp_id]]
+      }
+    }
     # select sequences from alignments
     seqs_list <- seqs_select(nms = nms, seqs_list = alignments)
     # filter selected sequences
